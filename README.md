@@ -3,6 +3,7 @@
 Stack Based Language written in go-lang. 
 This is my first compiler so dont expect anything good.
 The language is in active development.
+And for now it only compiles to native arm64 assembly.
 =======
 
 # PLUTO

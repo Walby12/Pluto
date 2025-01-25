@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"strconv"
 )
 
 const (
@@ -133,13 +135,11 @@ func compile_prog(program []interface{}, out_file_path string) {
                     }
 
                 case PLUS:
-				f.WriteString("    // PLUS operation\n")
-				f.WriteString("    ldr x1, [sp], #16\n")    // Pop first value
-				f.WriteString("    ldr x0, [sp], #16\n")    // Pop second value
-				f.WriteString("    add x0, x0, x1\n")       // Add values
-				f.WriteString("    str x0, [sp, #-16]!\n")  // Push result
-				// Remove this line that was causing double printing:
-				// f.WriteString("    bl dump\n")           // Print result
+					f.WriteString("    // PLUS operation\n")
+					f.WriteString("    ldr x1, [sp], #16\n")    // Pop first value
+					f.WriteString("    ldr x0, [sp], #16\n")    // Pop second value
+					f.WriteString("    add x0, x0, x1\n")       // Add values
+					f.WriteString("    str x0, [sp, #-16]!\n")  // Push result
 
 				case MINUS:
 					f.WriteString("    // MINUS operation\n")
@@ -147,7 +147,7 @@ func compile_prog(program []interface{}, out_file_path string) {
 					f.WriteString("    ldr x0, [sp], #16\n")    // Pop second value
 					f.WriteString("    sub x0, x0, x1\n")       // Sub values
 					f.WriteString("    str x0, [sp, #-16]!\n")  // Push result
-			
+
 				case DUMP:
 					f.WriteString("    // DUMP operation\n")
 					f.WriteString("    ldr x0, [sp], #16\n")    // Pop value to print
@@ -223,39 +223,77 @@ func compile_prog(program []interface{}, out_file_path string) {
     f.WriteString("    ret\n")
 }
 
-func usage() {
-	fmt.Println("Usage: Pluto <SUBCOMMAND> [ARGS]")
+func usage(file_name string) {
+	fmt.Printf("Usage: %v <SUBCOMMAND> [ARGS]\n", file_name)
 	fmt.Println("SUBCOMMANDS:")
-	fmt.Println("\tsim\tSimulate the prog")
-	fmt.Println("\tcom\tCompile the prog")
+	fmt.Println("\tsim <file>\tSimulate the prog")
+	fmt.Println("\tcom <file>\tCompile the prog")
 }
 
-func main() {
-	program := []interface{}{
-		push(34),
-		push(35),
-		plus(),
-		dump(),
-		push(500),
-		push(80),
-		minus(),
-		dump(),
+func parse_word_as_op(word string) []any {
+	switch word {
+	case "+":
+		return plus()
+	case "-":
+		return minus()
+	case ".":
+		return dump()
+	default:
+		if val, err := strconv.Atoi(word); err == nil {
+			return push(val)
+		}
+		fmt.Printf("Warning: Non-integer value encountered: %s\n", word)
+		return nil
 	}
+}
 
-	if len(os.Args) < 2 {
-		usage()
-		fmt.Println("Error: no subcommand is provided")
+func load_prog_from_file(file_path string) []any {
+	f, err := os.ReadFile(file_path)
+	if err != nil {
+		fmt.Println("No such file or directory:", file_path)
 		os.Exit(1)
 	}
 
-	subcommand := os.Args[1]
+	programText := string(f)
+
+	words := strings.Split(programText, " ")
+
+	var program []any
+	for _, word := range words {
+		op := parse_word_as_op(word)
+		if op != nil {
+			program = append(program, op)
+		}
+	}
+
+	return program
+}
+
+
+func main() {
+	argv := os.Args
+	program_name, argv := argv[0], argv[1:]
+
+	if len(argv) < 2 {
+		usage(program_name)
+		fmt.Println("Error: no subcommand provided")
+		os.Exit(1)
+	}
+	subcommand, argv := argv[0], argv[1:]
+
 	if subcommand == "sim" {
-		if err := simulate_prog(program); err != nil {
-			fmt.Println("Error:", err)
+		if len(argv) < 1 {
+			usage(program_name)
+			fmt.Println("Error: no input file for simulation")
 			os.Exit(1)
+		} 
+		program := load_prog_from_file(argv[0])
+		if err := simulate_prog(program); err != nil {
+    		fmt.Println("Error:", err)
+    		os.Exit(1)
 		}
 	} else if subcommand == "com" {
-		compile_prog(program, "out.s")
+		compile_prog([]interface{}{}, "out.s")
 		cmd := exec.Command("as", "-o", "out.o", "out.s")
 		err := cmd.Run()
 		if err != nil {
@@ -284,7 +322,7 @@ func main() {
 			}
 		}
 	} else {
-		fmt.Printf("Error: unknown subcommand %v\n", os.Args[1])
+		fmt.Printf("Error: unknown subcommand %v\n", argv[1])
 		os.Exit(1)
 	}
 }
