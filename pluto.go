@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"strconv"
+	"unicode"
 )
 
 const (
@@ -230,43 +231,52 @@ func usage(file_name string) {
 	fmt.Println("\tcom <file>\tCompile the prog")
 }
 
+func is_space(word string) bool {
+	return len(word) == 1 && unicode.IsSpace(rune(word[0]))
+}
+
 func parse_word_as_op(word string) []any {
+	word = strings.TrimSpace(word)
+	fmt.Printf("Parsing word: '%s'\n", word)
 	switch word {
 	case "+":
 		return plus()
 	case "-":
 		return minus()
-	case ".":
+	case "@":
 		return dump()
 	default:
 		if val, err := strconv.Atoi(word); err == nil {
 			return push(val)
+		} else if is_space(word) {
+			return nil
+		} else {
+			fmt.Printf("Warning: Non-integer value encountered: %s\n", word)
+			return nil	
 		}
-		fmt.Printf("Warning: Non-integer value encountered: %s\n", word)
-		return nil
 	}
 }
 
 func load_prog_from_file(file_path string) []any {
-	f, err := os.ReadFile(file_path)
-	if err != nil {
-		fmt.Println("No such file or directory:", file_path)
-		os.Exit(1)
-	}
+    f, err := os.ReadFile(file_path)
+    if err != nil {
+        fmt.Println("No such file or directory:", file_path)
+        os.Exit(1)
+    }
 
-	programText := string(f)
+    programText := string(f)
 
-	words := strings.Split(programText, " ")
+    words := strings.Fields(programText)
 
-	var program []any
-	for _, word := range words {
-		op := parse_word_as_op(word)
-		if op != nil {
-			program = append(program, op)
-		}
-	}
+    var program []any
+    for _, word := range words {
+        op := parse_word_as_op(word)
+        if op != nil {
+            program = append(program, op)
+        }
+    }
 
-	return program
+    return program
 }
 
 
