@@ -281,58 +281,67 @@ func load_prog_from_file(file_path string) []any {
 
 
 func main() {
-	argv := os.Args
-	program_name, argv := argv[0], argv[1:]
+    argv := os.Args
+    program_name := argv[0]
+    argv = argv[1:]
 
-	if len(argv) < 2 {
-		usage(program_name)
-		fmt.Println("Error: no subcommand provided")
-		os.Exit(1)
-	}
-	subcommand, argv := argv[0], argv[1:]
+    if len(argv) < 1 {
+        usage(program_name)
+        fmt.Println("Error: no subcommand provided")
+        os.Exit(1)
+    }
 
-	if subcommand == "sim" {
-		if len(argv) < 1 {
-			usage(program_name)
-			fmt.Println("Error: no input file for simulation")
-			os.Exit(1)
-		} 
-		program := load_prog_from_file(argv[0])
-		if err := simulate_prog(program); err != nil {
-    		fmt.Println("Error:", err)
-    		os.Exit(1)
-		}
-	} else if subcommand == "com" {
-		compile_prog([]interface{}{}, "out.s")
-		cmd := exec.Command("as", "-o", "out.o", "out.s")
-		err := cmd.Run()
-		if err != nil {
-			fmt.Println("Error during assembly compilation:", err)
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				fmt.Printf("Assembly compilation failed with exit code: %d\n", exitErr.ExitCode())
-			}
-			os.Exit(1)
-		} else {
-			fmt.Println("Compiling the assembly (wait a sec)")
-		}
+    subcommand := argv[0]
+    argv = argv[1:]
+    if subcommand == "sim" {
+        if len(argv) < 1 {
+            usage(program_name)
+            fmt.Println("Error: no input file for simulation")
+            os.Exit(1)
+        }
+        program := load_prog_from_file(argv[0])
+        if err := simulate_prog(program); err != nil {
+            fmt.Println("Error:", err)
+            os.Exit(1)
+        }
+    } else if subcommand == "com" {
+        if len(argv) < 1 {
+            usage(program_name)
+            fmt.Println("Error: no input file for compilation")
+            os.Exit(1)
+        }
+        program := load_prog_from_file(argv[0])
+        compile_prog(program, "out.s")
 
-		cmd = exec.Command("ld", "-o", "out", "out.o")
-		err = cmd.Run()
-		if err != nil {
-			fmt.Println("Error during the linking phase:", err)
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				fmt.Printf("Linking failed with exit code: %d\n", exitErr.ExitCode())
-			}
-			os.Exit(1)
-		} else {
-			fmt.Println("Linking the assembly! (this should be very fast)")
-			if err := exec.Command("rm", "out.o").Run(); err != nil {
-				fmt.Println("Error during the cleanup")
-				os.Exit(1)
-			}
-		}
-	} else {
-		fmt.Printf("Error: unknown subcommand %v\n", argv[1])
-		os.Exit(1)
-	}
+        cmd := exec.Command("as", "-o", "out.o", "out.s")
+        err := cmd.Run()
+        if err != nil {
+            fmt.Println("Error during assembly compilation:", err)
+            if exitErr, ok := err.(*exec.ExitError); ok {
+                fmt.Printf("Assembly compilation failed with exit code: %d\n", exitErr.ExitCode())
+            }
+            os.Exit(1)
+        } else {
+            fmt.Println("Compiling the assembly (wait a sec)")
+        }
+
+        cmd = exec.Command("ld", "-o", "out", "out.o")
+        err = cmd.Run()
+        if err != nil {
+            fmt.Println("Error during the linking phase:", err)
+            if exitErr, ok := err.(*exec.ExitError); ok {
+                fmt.Printf("Linking failed with exit code: %d\n", exitErr.ExitCode())
+            }
+            os.Exit(1)
+        } else {
+            fmt.Println("Linking the assembly! (this should be very fast)")
+            if err := exec.Command("rm", "out.o").Run(); err != nil {
+                fmt.Println("Error during the cleanup")
+                os.Exit(1)
+            }
+        }
+    } else {
+        fmt.Printf("Error: unknown subcommand %v\n", subcommand)
+        os.Exit(1)
+    }
 }
