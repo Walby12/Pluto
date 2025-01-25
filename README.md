@@ -1,6 +1,8 @@
 # PLUTO
 
-Stack Based Language written in go-lang. This is my first compiler so dont expect anything good
+Stack Based Language written in go-lang. 
+This is my first compiler so dont expect anything good.
+The language is in active development.
 
 ## Quick Start
 
