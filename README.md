@@ -13,7 +13,7 @@ The language is in active development.
 
 ## Quick Start
 
-'''console
+```console
 $ go run pluto.go sim (to simulate the program)
 $ go run pluto.go com (to compiler the program)
 $ ./out (to run the executable if you have compiled)
