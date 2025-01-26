@@ -8,6 +8,7 @@ import (
 	"strings"
 	"strconv"
 	"unicode"
+    "bufio"
 )
 
 const (
@@ -235,50 +236,92 @@ func is_space(word string) bool {
 	return len(word) == 1 && unicode.IsSpace(rune(word[0]))
 }
 
-func parse_word_as_op(word string) []any {
-	word = strings.TrimSpace(word)
-	fmt.Printf("Parsing word: '%s'\n", word)
-	switch word {
-	case "+":
-		return plus()
-	case "-":
-		return minus()
-	case "@":
-		return dump()
-	default:
-		if val, err := strconv.Atoi(word); err == nil {
-			return push(val)
-		} else if is_space(word) {
-			return nil
-		} else {
-			fmt.Printf("Warning: Non-integer value encountered: %s\n", word)
-			return nil	
-		}
-	}
+func parse_word_as_op(word string, lineNum, index int) (any, error) {
+    word = strings.TrimSpace(word)
+    switch word {
+    case "+":
+        return plus(), nil
+    case "-":
+        return minus(), nil
+    case "@":
+        return dump(), nil
+    default:
+        if val, err := strconv.Atoi(word); err == nil {
+            return push(val), nil
+        } else if is_space(word) {
+            return nil, nil
+        } else {
+            return nil, fmt.Errorf("Error: Invalid token '%s' at line %d, index %d", word, lineNum, index)
+        }
+    }
 }
 
-func load_prog_from_file(file_path string) []any {
-    f, err := os.ReadFile(file_path)
+func load_prog_from_file(file_path string) ([]any, error) {
+    tokens, err := lex_file(file_path)
     if err != nil {
-        fmt.Println("No such file or directory:", file_path)
+        fmt.Println("Error:", err)
         os.Exit(1)
     }
 
-    programText := string(f)
-
-    words := strings.Fields(programText)
-
     var program []any
-    for _, word := range words {
-        op := parse_word_as_op(word)
+    for _, token := range tokens {
+        op, err := parse_word_as_op(token.Value, token.Line, token.Index)
+        if err != nil {
+            return nil, err
+        }
+
         if op != nil {
             program = append(program, op)
         }
     }
 
-    return program
+    return program, nil
 }
 
+func is_tok_space(word string) bool {
+	return len(word) == 1 && (word == " " || word == "\t")
+}
+
+type Token struct {
+    Value    string
+    Line     int
+    Index    int
+}
+
+func lex_file(file_path string) ([]Token, error) {
+    f, err := os.Open(file_path)
+    if err != nil {
+        return nil, fmt.Errorf("error opening file: %w", err)
+    }
+    defer f.Close()
+
+    var tokens []Token
+    scanner := bufio.NewScanner(f)
+    lineNum := 0
+
+    for scanner.Scan() {
+        line := scanner.Text()
+        lineNum++
+
+        words := strings.Fields(line)
+
+        for index, word := range words {
+            token := Token{
+                Value: word,
+                Line:  lineNum,
+                Index: index,
+            }
+
+            tokens = append(tokens, token)
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        return nil, fmt.Errorf("error reading file: %w", err)
+    }
+
+    return tokens, nil
+}
 
 func main() {
     argv := os.Args
@@ -299,8 +342,8 @@ func main() {
             fmt.Println("Error: no input file for simulation")
             os.Exit(1)
         }
-        program := load_prog_from_file(argv[0])
-        if err := simulate_prog(program); err != nil {
+        program, err := load_prog_from_file(argv[0])
+        if err = simulate_prog(program); err != nil {
             fmt.Println("Error:", err)
             os.Exit(1)
         }
@@ -310,11 +353,15 @@ func main() {
             fmt.Println("Error: no input file for compilation")
             os.Exit(1)
         }
-        program := load_prog_from_file(argv[0])
+        program, err := load_prog_from_file(argv[0])
+        if err != nil {
+            fmt.Println(err)
+            os.Exit(1)
+        }
         compile_prog(program, "out.s")
 
         cmd := exec.Command("as", "-o", "out.o", "out.s")
-        err := cmd.Run()
+        err = cmd.Run()
         if err != nil {
             fmt.Println("Error during assembly compilation:", err)
             if exitErr, ok := err.(*exec.ExitError); ok {
@@ -342,6 +389,7 @@ func main() {
         }
     } else {
         fmt.Printf("Error: unknown subcommand %v\n", subcommand)
+        usage(program_name)
         os.Exit(1)
     }
 }
