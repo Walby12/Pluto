@@ -9,12 +9,14 @@ import (
 	"strconv"
 	"unicode"
     "bufio"
+    "path"
 )
 
 const (
 	PUSH = iota
 	PLUS
 	MINUS
+    EQUAL
 	DUMP
 )
 
@@ -32,6 +34,10 @@ func dump() []any {
 
 func minus() []any {
 	return []any{MINUS}
+}
+
+func equal() []any {
+    return []any{EQUAL}
 }
 
 func simulate_prog(program []interface{}) error {
@@ -75,6 +81,21 @@ func simulate_prog(program []interface{}) error {
 					} else {
 						return fmt.Errorf("Error: stack contains non-integer values: %v", op[0])
 					}
+                case EQUAL:
+                    if len(stack) < 2 {
+                        return fmt.Errorf("Error: not enough values for EQUALS operation")
+                    }
+                    a := stack[len(stack)-1]
+                    stack = stack[:len(stack)-1]
+                    b := stack[len(stack)-1]
+                    stack := stack[:len(stack)-1]
+                    
+                    if a == b {
+                    stack = append(stack, 1)
+                    } else {
+                    stack = append(stack, 0)
+                    }
+
 				case DUMP:
 					if len(stack) == 0 {
 						return errors.New("Error: stack is empty for DUMP operation")
@@ -154,6 +175,17 @@ func compile_prog(program []interface{}, out_file_path string) {
 					f.WriteString("    // DUMP operation\n")
 					f.WriteString("    ldr x0, [sp], #16\n")    // Pop value to print
 					f.WriteString("    bl dump\n")              // Call dump function
+
+                case EQUAL:
+                    f.WriteString("    // EQUAL operation\n")
+                    f.WriteString("    ldr x1, [sp], #16\n")    // Pop first value
+					f.WriteString("    ldr x0, [sp], #16\n")    // Pop second value
+                    // Compare the two values
+                    f.WriteString("    cmp x0, x1\n")           // Compare x0 (second value) with x1 (first value)
+
+                    // If equal, set x0 to 1 and push it to the stack
+                    f.WriteString("    cset x0, eq\n")           // Set x0 to 1 if equal, 0 if not equal
+                    f.WriteString("    str x0, [sp, #-16]!\n")  // Push result
 
                 default:
                     f.WriteString(fmt.Sprintf("    // Error: Unknown operation %v\n", op[0]))
@@ -245,6 +277,8 @@ func parse_word_as_op(word string, lineNum, index int) (any, error) {
         return minus(), nil
     case "@":
         return dump(), nil
+    case "=":
+        return equal(), nil
     default:
         if val, err := strconv.Atoi(word); err == nil {
             return push(val), nil
@@ -289,6 +323,9 @@ type Token struct {
 }
 
 func lex_file(file_path string) ([]Token, error) {
+    if !isPlutoFile(file_path) {
+        return nil, fmt.Errorf("Error: the file is not a .pluto")
+    }
     f, err := os.Open(file_path)
     if err != nil {
         return nil, fmt.Errorf("error opening file: %w", err)
@@ -323,6 +360,16 @@ func lex_file(file_path string) ([]Token, error) {
     return tokens, nil
 }
 
+func cmd(file_name string) string {
+    base := strings.TrimSuffix(file_name, path.Ext(file_name))
+    return base
+}
+
+func isPlutoFile(fileName string) bool {
+    ext := path.Ext(fileName)
+    return ext == ".pluto"
+}
+
 func main() {
     argv := os.Args
     program_name := argv[0]
@@ -342,25 +389,31 @@ func main() {
             fmt.Println("Error: no input file for simulation")
             os.Exit(1)
         }
+
         program, err := load_prog_from_file(argv[0])
         if err = simulate_prog(program); err != nil {
             fmt.Println("Error:", err)
             os.Exit(1)
         }
-    } else if subcommand == "com" {
+    } else if subcommand == "com" || subcommand == "com -r" {
         if len(argv) < 1 {
             usage(program_name)
             fmt.Println("Error: no input file for compilation")
             os.Exit(1)
         }
-        program, err := load_prog_from_file(argv[0])
+
+        inputFile := argv[0]
+        program, err := load_prog_from_file(inputFile)
         if err != nil {
             fmt.Println(err)
             os.Exit(1)
         }
-        compile_prog(program, "out.s")
 
-        cmd := exec.Command("as", "-o", "out.o", "out.s")
+        prog_name := cmd(inputFile)
+
+        compile_prog(program, prog_name + ".s")
+
+        cmd := exec.Command("as", "-o", prog_name + ".o", prog_name + ".s")
         err = cmd.Run()
         if err != nil {
             fmt.Println("Error during assembly compilation:", err)
@@ -369,10 +422,10 @@ func main() {
             }
             os.Exit(1)
         } else {
-            fmt.Println("Compiling the assembly (wait a sec)")
+            fmt.Println("Compiling the assembly (wait a sec)...")
         }
 
-        cmd = exec.Command("ld", "-o", "out", "out.o")
+        cmd = exec.Command("ld", "-o", prog_name, prog_name + ".o")
         err = cmd.Run()
         if err != nil {
             fmt.Println("Error during the linking phase:", err)
@@ -382,12 +435,15 @@ func main() {
             os.Exit(1)
         } else {
             fmt.Println("Linking the assembly! (this should be very fast)")
-            if err := exec.Command("rm", "out.o").Run(); err != nil {
-                fmt.Println("Error during the cleanup")
+            
+            if err := exec.Command("rm", prog_name + ".o").Run(); err != nil {
+                fmt.Println("Error during cleanup")
                 os.Exit(1)
             }
         }
-    } else {
+    } else if subcommand == "help" {
+        usage("<file/dir>")
+    }else {
         fmt.Printf("Error: unknown subcommand %v\n", subcommand)
         usage(program_name)
         os.Exit(1)
